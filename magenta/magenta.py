@@ -1,6 +1,4 @@
 import hashlib
-import numpy as np
-import os
 import time
 from PyQt5 import QtCore
 from ctypes import *
@@ -22,7 +20,7 @@ def round_keys(n, key) -> tuple:
     k1 = key & MASK_64
     k2 = (key>>64) & MASK_64
 
-    if(n==128):
+    if(n == 128):
         return (k1, k1, k2, k2, k1, k1)
 
     k3 = (key>>128) & MASK_64
@@ -121,27 +119,24 @@ def cipher_block_mode(magenta_func):
 
     return wrapper
 
+CBM = {'ECB': lambda p: None, 'CBC': lambda p: CBC(p), 'CFB': lambda p: CFB(p), 'OFB': lambda p: OFB(p), 'CTR': lambda p: CTR(p)}
+
 class CryptoThread(QtCore.QThread):
     update = QtCore.pyqtSignal(tuple)
 
-    def __init__(self, parent, bits, password,
-                        filepath, suffix, block_mode=None):
+    def __init__(self, bits, key, type, file_in, file_out='out', mode='ECB', parent=None):
         super(CryptoThread, self).__init__(parent)
 
-        self.fname_from = filepath
+        self.fname_from = file_in
+        self.fname_to = file_out
 
-        filename = os.path.splitext(os.path.basename(filepath))
-        basename = filename[0]
-        type = filename[1]
-        basename = os.path.splitext(basename)[0] if (os.path.splitext(basename)[1] in (".dec",".enc")) else basename
-
-        self.fname_to = os.path.dirname(filepath) +'/' + basename + "." + suffix + type
-
+        assert bits == 128 or bits == 192 or bits == 256, 'the key size must be 128, 192 or 256 bits'
         self.bits = bits
-        self.key = derive_key(password, KDF_KEY_SALT, self.bits//8)
+        self.key = derive_key(key, KDF_KEY_SALT, self.bits//8)
 
-        self.suffix = suffix
-        self.block_mode = block_mode
+        assert type == 'enc' or type == 'dec', "the type of operation must be 'enc' or 'dec'"
+        self.suffix = type
+        self.block_mode = CBM[mode](key)
 
         self.running = True
         self.byte = 16
