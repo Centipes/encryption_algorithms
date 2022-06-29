@@ -46,12 +46,12 @@ class MainWindow(QWidget):
         self.decrypt_button = QPushButton("Decrypt", self)
         self.decrypt_button.setStyleSheet("color:black")
         self.decrypt_button.setStyleSheet("font-size: 12pt")
-        self.decrypt_button.clicked.connect(lambda : self.encDecStart("decrypt"))
+        self.decrypt_button.clicked.connect(lambda : self.encDecStart("dec"))
 
         self.encrypt_button = QPushButton("Encrypt", self)
         self.encrypt_button.setStyleSheet("color:black")
         self.encrypt_button.setStyleSheet("font-size: 12pt")
-        self.encrypt_button.clicked.connect(lambda : self.encDecStart("encrypt"))
+        self.encrypt_button.clicked.connect(lambda : self.encDecStart("enc"))
 
         self.HStack_top1 = QHBoxLayout()
         self.HStack_top1.addWidget(self.progress_bar)
@@ -74,29 +74,17 @@ class MainWindow(QWidget):
         self.VStack_main.addLayout(self.HStack_bottom)
         self.setLayout(self.VStack_main)
 
-        self.cbm = lk.CipherBlockMode()
-        self.cipher_block_mode_dir = {"ECB": (lk.encrypt, lk.decrypt),
-                                      "CBC": (self.cbm.cbc_enc, self.cbm.cbc_dec),
-                                      "CFB": (self.cbm.cfb_enc, self.cbm.cfb_dec),
-                                      "OFB" : (self.cbm.ofb_enc_dec, self.cbm.ofb_enc_dec)}
-        self.mode = self.cipher_block_mode_dir["ECB"]
-
         self.filename = ""
 
     def encDecStart(self, type):
-        size = 128
         mode_text = self.encrypt_mode.currentText()
-        self.mode = self.cipher_block_mode_dir[mode_text]
         if((hasattr(self, "ed") and self.ed.isRunning()) or self.filename == ""):
             return
         in_key = self.key_input.text()
         if(in_key == ""):
             return
-        self.cbm.update()
-        key = in_key.encode("utf-8")
-        key = int.from_bytes(key, byteorder='big')
 
-        self.ed = lk.ThreadEncDec(self, self.filename, key, size, type, self.mode)
+        self.ed = lk.CryptoThread(in_key, type, self.filename, mode=mode_text, parent=self)
         self.ed.update.connect(self.updateProgress)
         self.ed.start()
 
