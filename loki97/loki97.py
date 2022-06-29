@@ -107,17 +107,18 @@ def f(A, B):
 # можно переписать key_init с помощью функции g
 # g = lambda k1, k3, k2, deltan: f(add(add(k1,k3),deltan), k2)
 
-def key_init(key, size):
+def key_init(key):
+    size = key.bit_length()
     n = size//64
     K = []
     k4 = key&MASK_64
     k3 = (key>>64)&MASK_64
-    if (n == 2):
+    if (n <= 2):
         k2 = f(k3, k4)
         k1 = f(k4, k3)
     else:
         k2 = (key>>128)&MASK_64
-        if(n == 3):
+        if(n <= 3):
             k1 = f(k4, k3)
         else:
             k1 = (key>>192)&MASK_64
@@ -142,7 +143,7 @@ def key_init(key, size):
 def encrypt(input, SK):
     R = input&MASK_64
     L = (input>>64)&MASK_64
-    # SK = key_init(key, size)
+    # SK = key_init(key)
     k = 0
     for i in range(16):
         Rn = add(R,SK[k])
@@ -157,7 +158,7 @@ def encrypt(input, SK):
 def decrypt(input, SK):
     R = input&MASK_64
     L = (input>>64)&MASK_64
-    # SK = key_init(key, size)
+    # SK = key_init(key)
     k = len(SK)-1
     for i in range(16):
         Rn = sub(R, SK[k])
@@ -173,6 +174,11 @@ def decrypt(input, SK):
 class CipherBlockMode():
     def __init__(self):
         self.c = IV
+        self.cipher_block_mode_dir = {
+            "ECB": (encrypt, decrypt),
+            "CBC": (self.cbc_enc, self.cbc_dec),
+            "CFB": (self.cfb_enc, self.cfb_dec),
+            "OFB" : (self.ofb_enc_dec, self.ofb_enc_dec)}
 
     def update(self):
         self.c = IV
@@ -203,16 +209,27 @@ class CipherBlockMode():
         self.c = ek
         return ek^text
 
+CBM = CipherBlockMode()
 
-class ThreadEncDec(QThread):
+class CryptoThread(QThread):
     update = pyqtSignal(int)
 
-    def __init__(self, parent, filename, key, size, type, mode=None):
-        super(ThreadEncDec, self).__init__(parent)
-        self.SK = key_init(key, size)
+    def __init__(self, key, type, file_in, file_out = 'out', mode='ECB', parent = None):
+        super(CryptoThread, self).__init__(parent)
+
+        if(isinstance(key, str)):
+            key = key.encode("utf-8")
+            key = int.from_bytes(key, byteorder='big')
+
+        self.SK = key_init(key)
+
+        assert type == 'enc' or type == 'dec', "the type of operation must be 'enc' or 'dec'"
         self.type = type
-        self.filename = filename
-        self.mode = mode
+
+        self.filename_in = file_in
+        self.filename_out = file_out
+
+        self.mode = CBM.cipher_block_mode_dir[mode]
 
     def enc_dec(self, f_in, f_out, s, e, loki97_func, fix_bytes):
 
@@ -248,31 +265,32 @@ class ThreadEncDec(QThread):
         self.update.emit(100)
 
     def run(self):
-        self.file_in = open(self.filename, 'rb')
-        self.file_out = open('out', 'wb')
+        CBM.update()           # обновить вектор инициализации
+        file_in = open(self.filename_in, 'rb')
+        file_out = open(self.filename_out, 'wb')
 
-        self.file_in.seek(0, 2)
-        file_len = self.file_in.tell()
+        file_in.seek(0, 2)
+        file_len = file_in.tell()
         length = file_len//16       # количество байт информации
-        self.file_in.seek(0, 0)
+        file_in.seek(0, 0)
 
-        if(self.type=='encrypt'):
+        if(self.type=='enc'):
             loki97_encrypt = self.mode[0]
 
-            delbytes = (file_len)%16        # количество байт, которые необходимо удалить из расшифрованного файла
-            num = loki97_encrypt(delbytes, self.SK) # шифруем эти байты, получаем какое-то целое число
+            delbytes = (file_len)%16                 # количество байт, которые необходимо удалить из расшифрованного файла
+            num = loki97_encrypt(delbytes, self.SK)  # шифруем эти байты, получаем какое-то целое число
             bytes = num.to_bytes(16, byteorder='big', signed=False) # переводим целое число в байты
-            self.file_out.write(bytes)       # записываем в другой файл
+            file_out.write(bytes)                    # записываем в другой файл
 
-            self.enc_dec(self.file_in, self.file_out, 0, length+1, loki97_encrypt, 16)
+            self.enc_dec(file_in, file_out, 0, length+1, loki97_encrypt, 16)
 
         else:
             loki97_decrypt = self.mode[1]
-            bytes = self.file_in.read(16)    # читаем первые 16 байт - информация о том, сколько нужно удалить байтов в конце
+            bytes = file_in.read(16)    # читаем первые 16 байт - информация о том, сколько нужно удалить байтов в конце
             num = int.from_bytes(bytes, byteorder='big')
             delbytes = loki97_decrypt(num, self.SK)
-            self.enc_dec(self.file_in, self.file_out, 1, length, loki97_decrypt, delbytes)
+            self.enc_dec(file_in, file_out, 1, length, loki97_decrypt, delbytes)
 
 
-        self.file_in.close()
-        self.file_out.close()
+        file_in.close()
+        file_out.close()
