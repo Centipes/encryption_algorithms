@@ -116,14 +116,6 @@ class MainWindow(QMainWindow):
         self.file_in = ""
         self.file_out = ""
 
-        # инициализация режимов шифрования
-        self.cbm = hpc.CipherBlockMode()
-        self.cipher_block_mode_dir = {"ECB": (hpc.encrypt, hpc.decrypt),
-                                      "CBC": (self.cbm.cbc_enc, self.cbm.cbc_dec),
-                                      "CFB": (self.cbm.cfb_enc, self.cbm.cfb_dec),
-                                      "OFB" : (self.cbm.ofb_enc_dec, self.cbm.ofb_enc_dec)}
-        self.mode = self.cipher_block_mode_dir["ECB"]
-
         self.filein_label= QLabel(self)
         self.filein_label.setText(self.title_filein)
         self.filein_label.move(20,220)
@@ -138,7 +130,7 @@ class MainWindow(QMainWindow):
                                                 "",
                                                 QtWidgets.QMessageBox.Ok |  QtWidgets.QMessageBox.Cancel,
                                                 None)
-
+        self.mode = 'ECB'
 
     # Функции
     def show_key(self):
@@ -209,15 +201,7 @@ class MainWindow(QMainWindow):
         else:
             self.fileout_label.setText("Расшифрованный файл: " + os.path.basename(self.file_out))
 
-        key = self.key_edit.text().encode('utf-8')
-        key = int.from_bytes(key, byteorder='big')
-
-        spice = self.spice_edit.text().encode('utf-8')
-        spice = int.from_bytes(spice, byteorder='big')
-
-        self.cbm.update() # обновить вектор инициализации
-
-        self.enc_dec = hpc.EncDecThread(self, self.file_in, self.file_out, key, spice, type, self.mode)
+        self.enc_dec = hpc.CryptoThread(self.key_edit.text(), type, self.file_in, self.file_out, self.spice_edit.text(), self.mode, self)
         self.enc_dec.update.connect(self.update_progress)
         self.enc_dec.start()
 
@@ -226,19 +210,19 @@ class MainWindow(QMainWindow):
 
     def ECB(self):
         self.mode_label.setText(self.title_mode + " ECB")
-        self.mode = self.cipher_block_mode_dir["ECB"]
+        self.mode = "ECB"
 
     def CBC(self):
         self.mode_label.setText(self.title_mode +" CBC")
-        self.mode = self.cipher_block_mode_dir["CBC"]
+        self.mode = "CBC"
 
     def CFB(self):
         self.mode_label.setText(self.title_mode + " CFB")
-        self.mode = self.cipher_block_mode_dir["CFB"]
+        self.mode = "CFB"
 
     def OFB(self):
         self.mode_label.setText(self.title_mode + " OFB")
-        self.mode = self.cipher_block_mode_dir["OFB"]
+        self.mode = "OFB"
 
 if __name__=="__main__":
     app = QApplication(sys.argv)
