@@ -5,9 +5,7 @@ from PyQt5 import QtCore, QtGui
 from PyQt5.QtGui import QIcon, QPixmap, QFont
 from PyQt5.QtCore import Qt
 
-import sys
-import os
-import time
+import sys, os
 import random
 
 import magenta as m
@@ -244,14 +242,17 @@ class MainWindow(QWidget):
         cipher_label.setFont(QFont('Times', 30))
         self.cipher_mode_label = QLabel("cipher block mode", self.cipher_widget)
         self.cipher_mode_label.setGeometry(53, 175, 200, 30)
+
+        mode_list = ["ECB", "CBC", "CFB", "OFB"]
         self.cipher_mode = QComboBox(self.cipher_widget)
         self.cipher_mode.setStyleSheet(s.combobox_style)
         self.cipher_mode.setGeometry(180, 175, 100, 30)
-        self.cipher_mode.addItem("ECB", lambda p: None)
-        self.cipher_mode.addItem("CBC", lambda p: m.CBC(p))
-        self.cipher_mode.addItem("CFB", lambda p: m.CFB(p))
-        self.cipher_mode.addItem("OFB", lambda p: m.OFB(p))
-        self.cipher_mode.addItem("CTR", lambda p: m.CTR(p))
+        self.cipher_mode.addItems(mode_list)
+        # self.cipher_mode.addItem("ECB", lambda p: None)
+        # self.cipher_mode.addItem("CBC", lambda p: m.CBC(p))
+        # self.cipher_mode.addItem("CFB", lambda p: m.CFB(p))
+        # self.cipher_mode.addItem("OFB", lambda p: m.OFB(p))
+        # self.cipher_mode.addItem("CTR", lambda p: m.CTR(p))
 
         self.UiKey()
         self.UiFileInfo()
@@ -297,9 +298,17 @@ class MainWindow(QWidget):
             self.print_error("Error: a key is required for %sryption", suffix)
             return
 
-        cb_mode = self.cipher_mode.currentData()(self.key_edit.text())
+        # cb_mode = self.cipher_mode.currentData()(self.key_edit.text())
+        cb_mode = self.cipher_mode.currentText()
 
-        self.enc_dec_thread = m.CryptoThread(self, self.bits, self.key_edit.text(), self.filepath, suffix, cb_mode)
+        filename = os.path.splitext(os.path.basename(self.filepath))
+        basename = filename[0]
+        type = filename[1]
+        basename = os.path.splitext(basename)[0] if (os.path.splitext(basename)[1] in (".dec",".enc")) else basename
+
+        filepath_out = os.path.dirname(self.filepath) +'/' + basename + "." + suffix + type
+
+        self.enc_dec_thread = m.CryptoThread(self.bits, self.key_edit.text(), suffix, self.filepath, filepath_out, cb_mode, self)
         self.sgnStop.connect(self.enc_dec_thread.stop)
         self.enc_dec_thread.update.connect(self.update_progress)
 
