@@ -247,6 +247,12 @@ def decrypt(ct, kx, spice):
 class CipherBlockMode():
     def __init__(self):
         self.c = IV
+        self.cipher_block_mode_dir = {
+                "ECB": (encrypt, decrypt),
+                "CBC": (self.cbc_enc, self.cbc_dec),
+                "CFB": (self.cfb_enc, self.cfb_dec),
+                "OFB" : (self.ofb_enc_dec, self.ofb_enc_dec)}
+
 
     def update(self):
         self.c = IV
@@ -277,17 +283,32 @@ class CipherBlockMode():
         self.c = ek
         return ek^text
 
+# инициализация режимов шифрования
+CBM = CipherBlockMode()
 
 
-class EncDecThread(QtCore.QThread):
+class CryptoThread(QtCore.QThread):
     update = QtCore.pyqtSignal(int)
 
-    def __init__(self,  parent, file_in, file_out, key, spice, type, mode=None):
-        super(EncDecThread, self).__init__(parent)
+    def __init__(self, key, type, file_in, file_out='out', spice='', mode='ECB', parent=None):
+        super(CryptoThread, self).__init__(parent)
+
+        if(isinstance(key, str)):
+            key = key.encode('utf-8')
+            key = int.from_bytes(key, byteorder='big')
+
+        if(isinstance(spice, str)):
+            spice = spice.encode('utf-8')
+            spice = int.from_bytes(spice, byteorder='big')
+
         self.spice = int_to_arr(spice, 8)
         self.kx = expand_key(key, len(bin(key))-2) # Расширение ключа или создание kx-таблицы
+
+        assert type == 'enc' or type == 'dec', "the type of operation must be 'enc' or 'dec'"
         self.type = type
-        self.mode = mode
+
+        self.mode = CBM.cipher_block_mode_dir[mode]
+
         self.filename_in = file_in
         self.filename_out = file_out
 
@@ -329,31 +350,32 @@ class EncDecThread(QtCore.QThread):
         self.update.emit(100)
 
     def run(self):
-        self.file_in = open(self.filename_in, 'rb') # файл откуда читаем
-        self.file_out = open(self.filename_out, 'wb') # файл куда записываем
+        CBM.update() # обновить вектор инициализации
+        file_in = open(self.filename_in, 'rb') # файл откуда читаем
+        file_out = open(self.filename_out, 'wb') # файл куда записываем
 
-        self.file_in.seek(0, 2)
-        file_length = self.file_in.tell()          # количество байт информации
+        file_in.seek(0, 2)
+        file_length = file_in.tell()          # количество байт информации
         length = file_length//16            # количество байт
-        self.file_in.seek(0, 0)
+        file_in.seek(0, 0)
         if(self.type=='enc'):
             hpc_encrypt = self.mode[0]
 
             delbytes = file_length%16 # количество байт, которые необходимо удалить из расшифрованного файла
             num = hpc_encrypt(delbytes, self.kx, self.spice) # шифруем эти байты, получаем какое-то целое число
             bytes = num.to_bytes(16, byteorder='big', signed=False) # переводим целое число в байты
-            self.file_out.write(bytes) # записываем в другой файл
+            file_out.write(bytes) # записываем в другой файл
 
-            self.enc_dec(self.file_in, self.file_out, 0, length+1, hpc_encrypt, 16)
+            self.enc_dec(file_in, file_out, 0, length+1, hpc_encrypt, 16)
 
         else:
             hpc_decrypt = self.mode[1]
-            bytes = self.file_in.read(16) # читаем первые 16 байт - информация о том, сколько нужно удалить байтов в конце
+            bytes = file_in.read(16) # читаем первые 16 байт - информация о том, сколько нужно удалить байтов в конце
             uint_form = int.from_bytes(bytes, byteorder='big')
             delbytes = hpc_decrypt(uint_form, self.kx, self.spice)
 
-            self.enc_dec(self.file_in, self.file_out, 1, length, hpc_decrypt, delbytes)
+            self.enc_dec(file_in, file_out, 1, length, hpc_decrypt, delbytes)
 
 
-        self.file_in.close()
-        self.file_out.close()
+        file_in.close()
+        file_out.close()
